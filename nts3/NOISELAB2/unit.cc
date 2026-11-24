@@ -6,7 +6,7 @@
 #include <math.h>
 
 namespace {
-constexpr float PI=3.14159265358979323846f;
+constexpr float NL_PI=3.14159265358979323846f;
 constexpr unsigned NVOICES=4;
 constexpr unsigned NP=8;
 static float sr=48000.f;
@@ -37,7 +37,7 @@ struct SVF {
   float ic1,ic2,a1,a2,a3,k;
   void reset(){ic1=ic2=0.f;a1=1.f;a2=a3=0.f;k=1.4142135f;}
   void configure(float hz,float q){
-    const float g=tanf(PI*clip(hz,20.f,15500.f)/sr);
+    const float g=tanf(NL_PI*clip(hz,20.f,15500.f)/sr);
     k=1.f/clip(q,0.55f,3.5f);
     a1=1.f/(1.f+g*(g+k));a2=g*a1;a3=g*a2;
   }
