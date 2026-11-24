@@ -1,0 +1,45 @@
+name: Build NOISELAB2 experimental for Korg NTS-3
+on:
+  push:
+    branches: [nts3-noiselab2-experimental]
+    paths:
+      - 'nts3/NOISELAB2/**'
+      - '.github/workflows/build-noiselab2.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ARM compiler
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi libnewlib-arm-none-eabi make
+      - name: Clone official Korg SDK
+        run: |
+          git clone --recurse-submodules --depth 1 https://github.com/korginc/logue-sdk.git /tmp/logue-sdk
+          test -f /tmp/logue-sdk/platform/nts-3_kaoss/dummy-genericfx/Makefile
+      - name: Build NOISELAB2 using official SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp -R nts3/NOISELAB2 /tmp/logue-sdk/platform/nts-3_kaoss/NOISELAB2
+          (
+            cd /tmp/logue-sdk/platform/nts-3_kaoss/NOISELAB2
+            make GCC_BIN_PATH=/usr/bin
+            make install GCC_BIN_PATH=/usr/bin
+          )
+          cp /tmp/logue-sdk/platform/nts-3_kaoss/NOISELAB2/noiselab2.nts3unit dist/NOISELAB2.nts3unit
+          test -s dist/NOISELAB2.nts3unit
+          arm-none-eabi-readelf -h dist/NOISELAB2.nts3unit | grep 'Machine:.*ARM'
+          python3 nts3/NOISELAB2/tests/verify_elf.py dist/NOISELAB2.nts3unit
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NOISELAB2-NTS3-v2.0-EXPERIMENTAL
+          path: dist/NOISELAB2.nts3unit
+          retention-days: 30
+          if-no-files-found: error
