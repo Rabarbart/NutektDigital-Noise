@@ -7,7 +7,6 @@
 
 namespace {
 constexpr float PI=3.14159265358979323846f;
-constexpr float INV_SR=1.f/48000.f;
 constexpr unsigned NVOICES=4;
 constexpr unsigned NP=8;
 static float sr=48000.f;
@@ -21,7 +20,6 @@ static float sustain=0.f;
 static float toneSmooth=0.5f, resonanceSmooth=0.137f, textureSmooth=0.f, levelSmooth=0.f;
 static float typeSmooth=0.f;
 static float attackStep=0.1f, hitDecayCoef=0.99f, releaseCoef=0.99f;
-static float riseStep=0.001f;
 static unsigned ctrlTicks=0;
 static float pink[7]={0.f};
 static float brown=0.f,brownDc=0.f,bandFast=0.f,bandSlow=0.f;
@@ -101,6 +99,26 @@ static float processOne(){
  levelSmooth+=smooth*(float(params[7])/1023.f-levelSmooth);
  typeSmooth+=0.009f*(float(params[0])-typeSmooth);
  if((ctrlTicks++&31U)==0U)recalc();
+ // Short percussive hits have full attack followed by decay (no decay during attack).
+ float hitsGain=0.f;
+ for(unsigned i=0;i<NVOICES;i++){
+   Hit &v=hits[i];
+   if(v.phase==1){v.env+=attackStep;if(v.env>=1.f){v.env=1.f;v.phase=2;}}
+   else if(v.phase==2){v.env*=hitDecayCoef;if(v.env<0.00005f){v.env=0.f;v.phase=0;}}
+   hitsGain+=v.env;
+ }
+ // Sustained gesture engages after 80ms; taps only launch autonomous HIT voices.
+ // No explicit MODE and no requirement to move a finger.
+ if(touching){
+   if(touchSamples<0x7fffffffu)++touchSamples;
+   if(touchSamples>=uint32_t(0.080f*sr))sustain+=clip(1.f/(sr*0.035f),0.f,1.f);
+   if(sustain>1.f)sustain=1.f;
+ }else{
+   sustain*=releaseCoef;
+   if(sustain<0.00002f)sustain=0.f;
+ }
+ const float env=hitsGain>sustain?hitsGain:sustain;
+ if(env<0.000001f)return 0.f;
  const float w=randomBipolar();
  // Well-established 7-tap pink-noise approximation (Kellet-style coefficients).
  pink[0]=0.99886f*pink[0]+w*0.0555179f;
@@ -161,25 +179,6 @@ static float processOne(){
    const float hpMix=clip((tone-0.5f)/0.05f,0.f,1.f);
    shaped=src*(1.f-hpMix)+hp*hpMix;
  }
- // Short percussive hits have full attack followed by decay (no decay during attack).
- float hitsGain=0.f;
- for(unsigned i=0;i<NVOICES;i++){
-   Hit &v=hits[i];
-   if(v.phase==1){v.env+=attackStep;if(v.env>=1.f){v.env=1.f;v.phase=2;}}
-   else if(v.phase==2){v.env*=hitDecayCoef;if(v.env<0.00005f){v.env=0.f;v.phase=0;}}
-   hitsGain+=v.env;
- }
- // Sustained gesture engages after 80ms; taps only launch autonomous HIT voices.
- // No explicit MODE and no requirement to move a finger.
- if(touching){
-   if(touchSamples<0x7fffffffu)++touchSamples;
-   if(touchSamples>=uint32_t(0.080f*sr))sustain+=clip(1.f/(sr*0.035f),0.f,1.f);
-   if(sustain>1.f)sustain=1.f;
- }else{
-   sustain*=releaseCoef;
-   if(sustain<0.00002f)sustain=0.f;
- }
- const float env=hitsGain>sustain?hitsGain:sustain;
  // Mild resonance compensation and soft output limiting.
  const float q=0.7071f+2.8f*resonanceSmooth;
  const float gainComp=1.f/(1.f+0.16f*(q-0.7071f));
